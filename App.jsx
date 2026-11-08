@@ -338,11 +338,16 @@ function MealsPage({role}) {
   const [message,setMessage] = useState('')
   const [recognized,setRecognized] = useState([])
 
-  const {data,busy:loading} = useLoad(
-    `meals-${date}`,
-    () => supabase.from('meals').select('*').eq('meal_date',date).maybeSingle().then(r => ({data:r.data?[r.data]:[],error:r.error})),
-    [date]
-  )
+  const {data,busy:loading,setData}=useLoad(
+  `meals-${date}`,
+  ()=>supabase
+    .from('meals')
+    .select('*')
+    .eq('meal_date',date)
+    .maybeSingle()
+    .then(r=>({data:r.data?[r.data]:[],error:r.error})),
+  [date]
+)
 
   function authHeaders(token) {
     return {'Authorization':`Bearer ${token}`}
