@@ -489,8 +489,58 @@ function MealsPage({role}) {
     }
   }
 
-  async function remove() {
-    if (!confirm('이 날짜의 급식 정보를 삭제할까요?')) return
+    async function remove() {
+    const row = data[0]
+
+    if (!row) {
+      setMessage('삭제할 급식 정보가 없어요.')
+      return
+    }
+
+    if (!confirm(`${date} 급식 정보를 삭제할까요?`)) return
+
+    setBusy(true)
+    setMessage('급식 정보를 삭제하고 있어요.')
+
+    try {
+      // 데이터베이스에서 급식 삭제
+      const { data: deletedRows, error } = await supabase
+        .from('meals')
+        .delete()
+        .eq('meal_date', date)
+        .select('meal_date')
+
+      if (error) throw error
+
+      // 실제 삭제된 행이 있는지 확인
+      if (!deletedRows || deletedRows.length === 0) {
+        throw new Error(
+          '급식이 삭제되지 않았어요. Supabase에서 meals 테이블의 DELETE 권한(RLS)을 확인해야 해요.'
+        )
+      }
+
+      // 데이터베이스 삭제 성공 후 이미지 삭제
+      let imageMessage = ''
+
+      if (row.image_paths?.length) {
+        const { error: imageError } = await supabase
+          .storage
+          .from('meal-images')
+          .remove(row.image_paths)
+
+        if (imageError) {
+          imageMessage = ' 단, 사진 파일 일부는 남아 있을 수 있어요.'
+        }
+      }
+
+      setData([])
+      setMessage(`급식 정보가 삭제됐어요.${imageMessage}`)
+    } catch (err) {
+      setMessage(`삭제 실패: ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
 
     const row = data[0]
     if (row?.image_paths?.length) {
