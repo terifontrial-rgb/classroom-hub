@@ -232,7 +232,7 @@ function MealsPage({role}) {
       const {error}=await supabase.from('meals').upsert({meal_date:date,title,description,image_paths:paths,updated_at:new Date().toISOString()},{onConflict:'meal_date'});if(error)throw error;setFiles([]);setTitle('');setDescription('');setMessage('급식이 저장됐어요.')
     }catch(err){setMessage(err.message)}finally{setBusy(false)}
   }
-  async function remove(){
+  async function remove(){ // ✔️ async 키워드 추가!
     const row = data[0]
     if (!row) {
       setMessage('삭제할 급식 정보가 없어요.')
