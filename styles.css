@@ -8,3 +8,15 @@
 /* Gemini meal review + account controls */
 .recognized-meals{display:grid;gap:12px;padding:15px;border:1px solid #e7e9df;border-radius:12px;background:#fafbf7}.recognized-meals h3{font-size:14px;margin:0}.recognized-row{display:grid;grid-template-columns:150px 1fr;gap:10px;padding:12px 0;border-top:1px solid #eceee7}.recognized-row label{display:grid;gap:6px;font-size:11px;color:#777}.recognized-row label:first-child{grid-column:1/-1}.recognized-row input,.recognized-row textarea{width:100%;border:1px solid #e8e5dd;border-radius:8px;padding:9px;background:#fffefa;color:#444;font:inherit}.recognized-row textarea{min-height:72px;resize:vertical}.inline-role{display:inline!important;margin-left:5px;color:#829a86;font-size:10px!important}.user-row .danger-button{white-space:nowrap;padding:8px 10px;font-size:10px}.permission-note{display:block;font-size:11px;color:#9aa395;margin-top:10px}
 @media(max-width:700px){.recognized-row{grid-template-columns:1fr}.recognized-row label:first-child{grid-column:auto}.user-row .danger-button{padding:7px 8px;font-size:9px}}
+
+.avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}.profile-edit-preview{display:flex;align-items:center;gap:12px;color:#829a86;font-size:12px}.photo-change{position:relative;cursor:pointer}.photo-change input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+
+
+.crop-backdrop{position:fixed;inset:0;z-index:100;background:#20251f88;display:grid;place-items:center;padding:20px}.crop-dialog{width:min(100%,390px);background:#fffefa;border-radius:16px;padding:22px;box-shadow:0 20px 60px #0003}.crop-dialog h2{font-size:18px;margin:0 0 7px}.crop-dialog>p{font-size:11px;color:#999;margin:0 0 18px}.crop-stage{position:relative;width:240px;height:240px;overflow:hidden;margin:0 auto 18px;background:#e9e8e1;touch-action:none;cursor:grab}.crop-stage:active{cursor:grabbing}.crop-stage img{position:absolute;max-width:none;user-select:none;pointer-events:none}.crop-circle{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px #15191488;border:2px solid #fff;pointer-events:none}.crop-zoom{display:grid;gap:8px;font-size:11px;color:#777;margin:0 0 17px}.crop-zoom input{accent-color:#829a86}.crop-dialog .button-row{justify-content:flex-end}.photo-change{position:relative;cursor:pointer;white-space:nowrap}.crop-backdrop .button-row{gap:8px}
+
+
+.avatar{overflow:hidden;position:relative}.avatar img{display:block;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;border-radius:50%;aspect-ratio:1}
+
+
+.fortune-preview>p,.fortune-copy{color:#72776c;line-height:1.9;white-space:pre-wrap;font-size:13px}.fortune-panel{min-height:260px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:#f5f5ee}.fortune-panel .empty-state{width:100%}.fortune-mark{font-size:30px;color:#c4a783;margin-bottom:12px}.fortune-panel .fortune-copy{max-width:620px;font-size:15px;margin:0 auto 20px}.fortune-panel .permission-note{margin-top:12px;color:#aaa}
+

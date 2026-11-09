@@ -1,0 +1,9 @@
+{
+  "devCommand": "npm run dev",
+  "crons": [
+    {
+      "path": "/api/daily-maintenance",
+      "schedule": "0 15 * * *"
+    }
+  ]
+}

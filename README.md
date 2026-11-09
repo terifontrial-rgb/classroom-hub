@@ -37,3 +37,16 @@ Vercel 프로젝트 Settings → Environment Variables에 아래 값을 등록�
 - `POST /api/recognize-meals`: 로그인한 교사/관리자만 Gemini 이미지 인식 요청 가능
 
 계정 삭제는 Supabase Auth Admin API를 서버에서 호출합니다. DB의 FK `ON DELETE CASCADE`로 profiles와 작성 게시물이 함께 삭제됩니다.
+
+## 나이스 급식 API 설정
+
+급식 화면은 경기도교육청(J10) 한백고등학교(7531240)의 급식식단정보를 조회합니다. 나이스 교육정보 개방 포털에서 API 인증키를 발급받은 뒤 서버 환경변수 `NEIS_API_KEY`로 설정하세요. 로컬에서는 `.env.local`, 배포에서는 Vercel 프로젝트 Settings > Environment Variables에서 설정합니다. 이 키는 브라우저에 노출하지 않습니다. `npm run dev`로 실행하면 Vite 개발 API 미들웨어가 급식과 계정 API 경로도 처리합니다.
+
+
+## 매일 급식 정리 및 오늘의 운세
+
+급식 화면의 한 달 가져오기는 선택한 달의 오늘 이후 식단만 저장하고 과거 날짜의 급식 행은 지웁니다. 매일 실행되는 Vercel 작업도 지난 급식과 운세를 정리합니다.
+
+오늘의 운세는 `GEMINI_API_KEY`로 Gemini 3.8 Flash를 호출해 학급 공용의 짧은 문구를 하루 한 번 생성합니다. 운세 테이블을 만들려면 `sql/06_daily_fortunes.sql`을 Supabase SQL Editor에서 실행하세요.
+
+Vercel 프로젝트의 Production 환경변수에 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `GEMINI_API_KEY`, `CRON_SECRET`을 설정한 뒤 배포해야 예약 작업이 작동합니다. 로컬 `.env.local`에는 기존 서버 키들과 `GEMINI_API_KEY`, 임의의 긴 `CRON_SECRET`을 설정할 수 있습니다. 예약 경로는 `/api/daily-maintenance`이며 Vercel에서 매일 한국 시간 자정을 목표로 실행합니다.
