@@ -1,10 +1,18 @@
+# Logs & Dependencies
 node_modules/
 dist/
+
+# Environment Variables & Secrets (절대 깃허브에 올리지 않음)
 .env
-.env.*
+.env.local
+.env.*.local
+suggestion-box/.env
+
+# Allow example templates
 !.env.example
+!suggestion-box/.env.example
+
+# Vercel & OS
 .vercel/
 .DS_Store
-
-.vercel
-.env*
+Thumbs.db

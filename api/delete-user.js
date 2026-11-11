@@ -14,7 +14,7 @@ export default async function handler(req, res) {
       .from('profiles').select('id,role').eq('id', targetId).maybeSingle()
     if (targetError || !target) return send(res, 404, { error: '삭제할 계정을 찾을 수 없습니다.' })
     if (target.role === 'admin') return send(res, 403, { error: '관리자 계정은 삭제할 수 없습니다.' })
-    if (auth.profile.role === 'teacher' && target.role !== 'student') {
+    if (auth.profile.role === 'teacher' && !['student', 'schedule_only'].includes(target.role)) {
       return send(res, 403, { error: '선생님은 학생 계정만 삭제할 수 있습니다.' })
     }
     if (!['admin', 'teacher'].includes(auth.profile.role)) return send(res, 403, { error: '계정을 삭제할 권한이 없습니다.' })

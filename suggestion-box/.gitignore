@@ -1,0 +1,14 @@
+# Logs & Dependencies
+node_modules/
+dist/
+
+# Secrets
+.env
+.env.local
+
+# Template
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

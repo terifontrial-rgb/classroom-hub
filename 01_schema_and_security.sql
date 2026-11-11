@@ -6,7 +6,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
   display_name text,
-  role text not null default 'student' check (role in ('admin','teacher','student')),
+  role text not null default 'student' check (role in ('admin','teacher','student','schedule_only')),
   created_at timestamptz not null default now()
 );
 

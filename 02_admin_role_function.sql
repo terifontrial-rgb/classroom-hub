@@ -11,7 +11,7 @@ begin
     raise exception '관리자만 계정 권한을 변경할 수 있습니다.';
   end if;
 
-  if new_role not in ('admin', 'teacher', 'student') then
+  if new_role not in ('admin', 'teacher', 'student', 'schedule_only') then
     raise exception '올바르지 않은 권한입니다.';
   end if;
 

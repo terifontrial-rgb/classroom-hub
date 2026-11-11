@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     if (!['admin', 'teacher'].includes(auth.profile.role)) return send(res, 403, { error: '계정 목록을 볼 권한이 없습니다.' })
 
     let query = admin.from('profiles').select('id,email,display_name,avatar_path,role,created_at').order('created_at', { ascending: true })
-    if (auth.profile.role === 'teacher') query = query.eq('role', 'student')
+    if (auth.profile.role === 'teacher') query = query.in('role', ['student', 'schedule_only'])
     const { data, error } = await query
     if (error) return send(res, 500, { error: error.message })
     return send(res, 200, { users: data || [] })

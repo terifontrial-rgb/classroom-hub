@@ -2,16 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, Utensils, Clock3, MessageSquare, Shield, LogOut,
   Plus, ChevronLeft, ChevronRight, Pin, ImagePlus, Trash2, Menu,
-  X, Sparkles, Users, BookOpen, RefreshCw
+  X, Sparkles, Users, BookOpen, RefreshCw, Edit3, Eye, Check,
+  Inbox, ExternalLink
 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from './supabase'
 
+// ============================================================================
+// ⭐ [건의함 사이트 주소 설정]
+// 건의함 웹사이트를 배포한 후, 아래 큰따옴표('') 안에 배포된 주소를 입력해 주세요!
+// (또는 .env 파일에 VITE_SUGGESTION_BOX_URL=배포주소 형태로 입력하셔도 됩니다.)
+// 예시: export const SUGGESTION_BOX_URL = 'https://my-classroom-suggestions.vercel.app'
+// ============================================================================
+export const SUGGESTION_BOX_URL = import.meta.env.VITE_SUGGESTION_BOX_URL || 'https://suggestion-box-flax.vercel.app/'
+
 const weekdays = ['일', '월', '화', '수', '목', '금', '토']
 const timetableWeekdays = weekdays.slice(1, 6)
-const roleLabel = { admin: '관리자', teacher: '선생님', student: '학생' }
+const roleLabel = { admin: '관리자', teacher: '선생님', student: '학생', schedule_only: '일정만' }
 const todayISO = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date())
 const dateLabel = (value) => value ? new Date(`${value}T00:00:00`).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
 const isStaff = (role) => role === 'admin' || role === 'teacher'
+const canManageCalendar = (role) => role === 'admin' || role === 'teacher' || role === 'schedule_only'
 const cleanMealDescription = (value) => /(?:\d+(?:\.\d+)?\s*kcal|쇠고기|돼지고기|닭고기|오리고기|원산지|비고\s*:)/i.test(value || '') ? '' : value
 
 export default function App() {
@@ -65,11 +75,47 @@ export default function App() {
       <div className="brand"><div className="brand-mark">C</div><div><b>우리반 허브</b><small>CLASSROOM HUB</small></div><button className="icon-button mobile-close" onClick={() => setMenuOpen(false)}><X size={18}/></button></div>
       <div className="class-chip"><span className="status-dot"/> 우리 반 공간</div>
       <nav>{nav.map(([id, label, Icon]) => <button key={id} className={`nav-item ${page === id ? 'active' : ''}`} onClick={() => {setPage(id);setMenuOpen(false)}}><Icon size={18}/>{label}</button>)}</nav>
+      
+      {/* 건의함 바로가기 섹션 */}
+      <div className="sidebar-section">
+        <span className="sidebar-section-title">소통 공간</span>
+        <a
+          href={SUGGESTION_BOX_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="suggestion-link-card"
+          onClick={(e) => {
+            if (SUGGESTION_BOX_URL.includes('your-suggestion-box-url')) {
+              e.preventDefault()
+              alert('건의함 사이트 주소가 아직 설정되지 않았습니다.\nApp.jsx 상단의 SUGGESTION_BOX_URL에 배포한 사이트 주소를 입력해 주세요!')
+            }
+          }}
+        >
+          <div className="suggestion-link-icon">
+            <Inbox size={17} />
+          </div>
+          <div className="suggestion-link-info">
+            <b>건의함 바로가기</b>
+            <small>익명 글·사진 남기기 <ExternalLink size={10} style={{ display: 'inline', verticalAlign: 'middle' }} /></small>
+          </div>
+        </a>
+      </div>
+
       <div className="sidebar-bottom"><div className="profile-mini"><Avatar profile={profile} fallback={session.user.email}/><div className="profile-text"><b>{profile.display_name || session.user.email}</b><small>{roleLabel[profile.role] || '학생'}</small></div></div><button className="nav-item" onClick={signOut}><LogOut size={18}/> 로그아웃</button></div>
     </aside>
     {menuOpen && <button className="scrim" aria-label="메뉴 닫기" onClick={() => setMenuOpen(false)}/>}
     <main className="main-area">
-      <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)}><Menu/></button><div><span className="eyebrow">YOUR CLASS, IN ONE PLACE</span><h1>{nav.find(x => x[0] === page)?.[1] || '우리 반'}</h1></div><div className="top-actions"><span className="role-pill">{roleLabel[profile.role]}</span><button className="icon-button" title="새로고침" onClick={refresh}><RefreshCw size={17}/></button></div></header>
+      <header className="topbar">
+        <button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)}><Menu/></button>
+        <div className="topbar-title">
+          <span className="eyebrow">YOUR CLASS, IN ONE PLACE</span>
+          <h1>{nav.find(x => x[0] === page)?.[1] || '우리 반'}</h1>
+        </div>
+        <div className="top-actions">
+          <span className="role-pill">{roleLabel[profile.role] || '학생'}</span>
+          <button className="icon-button" title="새로고침" onClick={refresh}><RefreshCw size={17}/></button>
+        </div>
+      </header>
       {notice && <div className="notice">{notice}<button onClick={() => setNotice('')}>닫기</button></div>}
       <div className="page-content" key={`${page}-${refreshKey}`}>
         {page === 'home' && <HomePage role={profile.role} go={setPage}/>}
@@ -92,33 +138,249 @@ function Avatar({profile, fallback='?'}) {
 }
 
 function ProfilePage({profile,userId,onSaved}) {
-  const [name,setName]=useState(profile.display_name||''),[file,setFile]=useState(null),[cropFile,setCropFile]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState('')
-  useEffect(()=>{setName(profile.display_name||'')},[profile.display_name])
-  async function save(e){e.preventDefault();setBusy(true);setMessage('')
-    try {
-      let avatar_path=profile.avatar_path||null
-      if(file){if(!file.type.startsWith('image/'))throw new Error('이미지 파일을 선택해 주세요.');if(file.size>5*1024*1024)throw new Error('사진은 5MB 이하로 선택해 주세요.')
-        const path=`${userId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
-        const {error:uploadError}=await supabase.storage.from('profile-avatars').upload(path,file,{upsert:false});if(uploadError)throw uploadError;avatar_path=path
+  const [name, setName] = useState(profile.display_name || '')
+  const [file, setFile] = useState(null)
+  const [cropFile, setCropFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const fileInputRef = useRef(null)
+
+  useEffect(() => { setName(profile.display_name || '') }, [profile.display_name])
+
+  function handleFileChange(e) {
+    const picked = e.target.files?.[0]
+    if (picked) {
+      if (!picked.type.startsWith('image/')) {
+        setMessage('이미지 파일을 선택해 주세요.')
+        return
       }
-      const {error}=await supabase.from('profiles').update({display_name:name.trim(),avatar_path}).eq('id',userId);if(error)throw error
-      setFile(null);setMessage('프로필을 저장했어요.');await onSaved((await supabase.auth.getUser()).data.user)
-    }catch(error){setMessage(`저장 실패: ${error.message}`)}finally{setBusy(false)}
+      setCropFile(picked)
+    }
+    e.target.value = ''
   }
-  async function resetAvatar(){if(!profile.avatar_path&&!file)return;setBusy(true);setMessage('');try{const {error}=await supabase.from('profiles').update({avatar_path:null}).eq('id',userId);if(error)throw error;setFile(null);setMessage('기본 프로필 사진으로 되돌렸어요.');await onSaved((await supabase.auth.getUser()).data.user)}catch(error){setMessage(`기본 사진으로 되돌리지 못했어요: ${error.message}`)}finally{setBusy(false)}}
-  return <div className="stack-lg"><div className="page-intro"><span className="eyebrow">MY PROFILE</span><h2>내 프로필을 바꿔요.</h2><p>이름과 프로필 사진은 본인, 선생님, 관리자가 변경할 수 있어요.</p></div><section className="panel"><form className="editor-form" onSubmit={save}><div className="profile-edit-preview"><Avatar profile={{...profile,display_name:name}}/><span>{roleLabel[profile.role]}</span></div><label>이름<input value={name} onChange={e=>setName(e.target.value)} maxLength="80" required/></label><label className="upload-box"><ImagePlus/> 프로필 사진 선택<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const picked=e.target.files?.[0];if(picked){setCropFile(picked);e.target.value=''}}}/><small>{cropFile?.name ? `선택됨: ${cropFile.name} · 사진 조정 후 저장` : file?.name ? `선택됨: ${file.name}` : 'PNG/JPG/WebP · 최대 5MB'}</small></label><div className="button-row"><button className="button" disabled={busy}>{busy?'저장 중...':'프로필 저장'}</button><button type="button" className="danger-button" disabled={busy||(!profile.avatar_path&&!file)} onClick={resetAvatar}>기본 사진으로 되돌리기</button></div>{message&&<p className="inline-message">{message}</p>}</form></section>{cropFile&&<ImageCropDialog file={cropFile} onCancel={()=>setCropFile(null)} onCrop={cropped=>{setFile(cropped);setCropFile(null)}}/>}</div>
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setMessage('')
+    try {
+      let avatar_path = profile.avatar_path || null
+      if (file) {
+        const ext = file.type?.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+        const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+        const fileName = `${crypto.randomUUID()}.${safeExt}`
+        const path = `${userId}/${fileName}`
+        const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'image/jpeg'
+        })
+        if (uploadError) throw uploadError
+        avatar_path = path
+      }
+      const { error } = await supabase.from('profiles').update({
+        display_name: name.trim(),
+        avatar_path
+      }).eq('id', userId)
+      if (error) throw error
+      setFile(null)
+      setMessage('프로필을 저장했어요.')
+      await onSaved((await supabase.auth.getUser()).data.user)
+    } catch (error) {
+      setMessage(`저장 실패: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resetAvatar() {
+    if (!profile.avatar_path && !file) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const { error } = await supabase.from('profiles').update({ avatar_path: null }).eq('id', userId)
+      if (error) throw error
+      setFile(null)
+      setMessage('기본 프로필 사진으로 되돌렸어요.')
+      await onSaved((await supabase.auth.getUser()).data.user)
+    } catch (error) {
+      setMessage(`기본 사진으로 되돌리지 못했어요: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <div className="stack-lg">
+    <div className="page-intro">
+      <span className="eyebrow">MY PROFILE</span>
+      <h2>내 프로필을 바꿔요.</h2>
+      <p>이름과 프로필 사진은 본인, 선생님, 관리자가 변경할 수 있어요.</p>
+    </div>
+    <section className="panel">
+      <form className="editor-form" onSubmit={save}>
+        <div className="profile-edit-preview">
+          <Avatar profile={{ ...profile, display_name: name }} />
+          <span>{roleLabel[profile.role] || '학생'}</span>
+        </div>
+        <label>
+          이름
+          <input value={name} onChange={e => setName(e.target.value)} maxLength="80" required />
+        </label>
+        
+        {/* 모바일 호환 파일 업로드 컨트롤 */}
+        <div>
+          <span className="input-label-text">프로필 사진</span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            className="upload-box-button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImagePlus size={18} />
+            <div className="upload-box-text">
+              <b>사진 선택하기 (모바일/PC 지원)</b>
+              <small>
+                {cropFile ? `사진 조정 중: ${cropFile.name}` : file ? `준비 완료: ${file.name}` : '카메라 촬영 또는 갤러리/파일에서 선택'}
+              </small>
+            </div>
+          </button>
+        </div>
+
+        <div className="button-row">
+          <button className="button" disabled={busy}>{busy ? '저장 중...' : '프로필 저장'}</button>
+          <button type="button" className="danger-button" disabled={busy || (!profile.avatar_path && !file)} onClick={resetAvatar}>
+            기본 사진으로 되돌리기
+          </button>
+        </div>
+        {message && <p className="inline-message">{message}</p>}
+      </form>
+    </section>
+
+    {cropFile && (
+      <ImageCropDialog
+        file={cropFile}
+        onCancel={() => setCropFile(null)}
+        onUseOriginal={(raw) => {
+          setFile(raw)
+          setCropFile(null)
+        }}
+        onCrop={(cropped) => {
+          setFile(cropped)
+          setCropFile(null)
+        }}
+      />
+    )}
+  </div>
 }
 
-function ImageCropDialog({file,onCrop,onCancel}) {
-  const viewport=240,imageRef=useRef(null),drag=useRef(null),[url,setUrl]=useState(''),[size,setSize]=useState(null),[zoom,setZoom]=useState(1),[offset,setOffset]=useState({x:0,y:0})
-  useEffect(()=>{const next=URL.createObjectURL(file);setUrl(next);return()=>URL.revokeObjectURL(next)},[file])
-  const base=size?Math.max(viewport/size.width,viewport/size.height):1
-  const width=size?size.width*base*zoom:viewport,height=size?size.height*base*zoom:viewport
-  function loaded(e){const img=e.currentTarget;setSize({width:img.naturalWidth,height:img.naturalHeight});const fit=Math.max(viewport/img.naturalWidth,viewport/img.naturalHeight);setOffset({x:(viewport-img.naturalWidth*fit)/2,y:(viewport-img.naturalHeight*fit)/2})}
-  function clamp(x,y,w=width,h=height){return {x:Math.min(0,Math.max(viewport-w,x)),y:Math.min(0,Math.max(viewport-h,y))}}
-  function setZoomed(value){const next=Math.max(1,Math.min(3,value));const ratio=next/zoom;setZoom(next);setOffset(old=>clamp(viewport/2-(viewport/2-old.x)*ratio,viewport/2-(viewport/2-old.y)*ratio, size.width*base*next,size.height*base*next))}
-  function finish(){const img=imageRef.current;if(!img||!size)return;const canvas=document.createElement('canvas');canvas.width=512;canvas.height=512;const ctx=canvas.getContext('2d'),scale=width/size.width;ctx.drawImage(img,-offset.x/scale,-offset.y/scale,viewport/scale,viewport/scale,0,0,512,512);canvas.toBlob(blob=>{if(blob)onCrop(new File([blob],'profile-photo.jpg',{type:'image/jpeg'}))},'image/jpeg',.92)}
-  return <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="프로필 사진 자르기"><section className="crop-dialog"><h2>프로필 사진 조정</h2><p>사진을 끌어 원 안에 원하는 부분을 맞춰 주세요.</p><div className="crop-stage" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);drag.current={x:e.clientX-offset.x,y:e.clientY-offset.y}}} onPointerMove={e=>{if(drag.current)setOffset(clamp(e.clientX-drag.current.x,e.clientY-drag.current.y))}} onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>{url&&<img ref={imageRef} src={url} onLoad={loaded} alt="자르기 미리보기" draggable="false" style={{width,height,left:offset.x,top:offset.y}}/>}<div className="crop-circle"/></div><label className="crop-zoom">확대/축소<input type="range" min="1" max="3" step="0.01" value={zoom} onChange={e=>setZoomed(Number(e.target.value))}/></label><div className="button-row"><button type="button" className="danger-button" onClick={onCancel}>취소</button><button type="button" className="button" disabled={!size} onClick={finish}>이 사진 사용</button></div></section></div>
+function ImageCropDialog({ file, onCrop, onUseOriginal, onCancel }) {
+  const viewport = 240
+  const imageRef = useRef(null)
+  const drag = useRef(null)
+  const [url, setUrl] = useState('')
+  const [size, setSize] = useState(null)
+  const [zoom, setZoom] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const next = URL.createObjectURL(file)
+    setUrl(next)
+    return () => URL.revokeObjectURL(next)
+  }, [file])
+
+  const base = size ? Math.max(viewport / size.width, viewport / size.height) : 1
+  const width = size ? size.width * base * zoom : viewport
+  const height = size ? size.height * base * zoom : viewport
+
+  function loaded(e) {
+    const img = e.currentTarget
+    setSize({ width: img.naturalWidth, height: img.naturalHeight })
+    const fit = Math.max(viewport / img.naturalWidth, viewport / img.naturalHeight)
+    setOffset({ x: (viewport - img.naturalWidth * fit) / 2, y: (viewport - img.naturalHeight * fit) / 2 })
+  }
+
+  function clamp(x, y, w = width, h = height) {
+    return {
+      x: Math.min(0, Math.max(viewport - w, x)),
+      y: Math.min(0, Math.max(viewport - h, y))
+    }
+  }
+
+  function setZoomed(value) {
+    const next = Math.max(1, Math.min(3, value))
+    const ratio = next / zoom
+    setZoom(next)
+    setOffset(old => clamp(
+      viewport / 2 - (viewport / 2 - old.x) * ratio,
+      viewport / 2 - (viewport / 2 - old.y) * ratio,
+      size.width * base * next,
+      size.height * base * next
+    ))
+  }
+
+  function finish() {
+    const img = imageRef.current
+    if (!img || !size) {
+      onUseOriginal(file)
+      return
+    }
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 512
+    const ctx = canvas.getContext('2d')
+    const scale = width / size.width
+    ctx.drawImage(img, -offset.x / scale, -offset.y / scale, viewport / scale, viewport / scale, 0, 0, 512, 512)
+    canvas.toBlob(blob => {
+      if (blob) {
+        let resultFile
+        try {
+          resultFile = new File([blob], 'profile-photo.jpg', { type: 'image/jpeg' })
+        } catch {
+          blob.name = 'profile-photo.jpg'
+          resultFile = blob
+        }
+        onCrop(resultFile)
+      } else {
+        onUseOriginal(file)
+      }
+    }, 'image/jpeg', 0.9)
+  }
+
+  return <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="프로필 사진 자르기">
+    <section className="crop-dialog">
+      <h2>프로필 사진 조정</h2>
+      <p>사진을 끌어 원 안에 원하는 부분을 맞춰 주세요. 모바일에서는 원본 그대로 사용할 수도 있어요.</p>
+      <div
+        className="crop-stage"
+        onPointerDown={e => {
+          try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+          drag.current = { x: e.clientX - offset.x, y: e.clientY - offset.y }
+        }}
+        onPointerMove={e => {
+          if (drag.current) setOffset(clamp(e.clientX - drag.current.x, e.clientY - drag.current.y))
+        }}
+        onPointerUp={() => { drag.current = null }}
+        onPointerCancel={() => { drag.current = null }}
+      >
+        {url && <img ref={imageRef} src={url} onLoad={loaded} alt="자르기 미리보기" draggable="false" style={{ width, height, left: offset.x, top: offset.y }} />}
+        <div className="crop-circle" />
+      </div>
+      <label className="crop-zoom">
+        확대/축소
+        <input type="range" min="1" max="3" step="0.01" value={zoom} onChange={e => setZoomed(Number(e.target.value))} />
+      </label>
+      <div className="button-row crop-actions">
+        <button type="button" className="danger-button" onClick={onCancel}>취소</button>
+        <button type="button" className="subtle-button" onClick={() => onUseOriginal(file)}>원본 그대로 사용</button>
+        <button type="button" className="button" disabled={!size} onClick={finish}>이 사진 사용</button>
+      </div>
+    </section>
+  </div>
 }
 
 function SetupScreen() {
@@ -137,7 +399,6 @@ function AuthScreen() {
     e.preventDefault()
     setBusy(true)
     setMessage('')
-
     try {
       const result = mode === 'login'
         ? await supabase.auth.signInWithPassword({ email, password })
@@ -146,7 +407,6 @@ function AuthScreen() {
             password,
             options: { data: { display_name: name } }
           })
-
       if (result.error) {
         setMessage(result.error.message)
       } else if (mode === 'signup') {
@@ -247,7 +507,6 @@ function MealsPage({role}) {
       return
     }
     if (!confirm(`${date} 급식 정보를 삭제할까요?`)) return
-
     setBusy(true)
     setMessage('급식 정보를 삭제하고 있어요.')
     try {
@@ -261,7 +520,6 @@ function MealsPage({role}) {
       if (!deletedRows || deletedRows.length === 0) {
         throw new Error('삭제된 급식 데이터가 없어요. Supabase의 meals 테이블 DELETE 정책(RLS)을 확인해 주세요.')
       }
-
       let imageMessage = ''
       if (row.image_paths?.length) {
         const { error: imageError } = await supabase.storage
@@ -269,7 +527,6 @@ function MealsPage({role}) {
           .remove(row.image_paths)
         if (imageError) imageMessage = ' 사진 파일은 일부 남아 있을 수 있어요.'
       }
-
       setData([])
       setMessage(`급식 정보가 삭제됐어요.${imageMessage}`)
     } catch (error) {
@@ -291,32 +548,736 @@ function TimetablePage({role}) {
 }
 
 function CalendarPage({role}) {
-  const staff=isStaff(role),[month,setMonth]=useState(()=>new Date()),[date,setDate]=useState(todayISO()),[title,setTitle]=useState(''),[description,setDescription]=useState(''),[dday,setDday]=useState(false),[message,setMessage]=useState('')
-  const year=month.getFullYear(),mon=month.getMonth(),first=new Date(year,mon,1).getDay(),days=new Date(year,mon+1,0).getDate()
-  const {data,busy}=useLoad(`events-${year}-${mon}`,()=>supabase.from('events').select('*').gte('event_date',`${year}-${String(mon+1).padStart(2,'0')}-01`).lte('event_date',`${year}-${String(mon+1).padStart(2,'0')}-${String(days).padStart(2,'0')}`).order('event_date'))
-  const selected=data.filter(e=>e.event_date===date)
-  async function add(e){e.preventDefault();const {error}=await supabase.from('events').insert({event_date:date,title,description,is_dday:dday});setMessage(error?.message||'일정을 등록했어요.');if(!error){setTitle('');setDescription('');setDday(false);location.reload()}}
-  async function del(id){if(!confirm('이 일정을 삭제할까요?'))return;const {error}=await supabase.from('events').delete().eq('id',id);setMessage(error?.message||'삭제했어요.');if(!error)location.reload()}
-  return <div className="stack-lg"><div className="page-intro"><span className="eyebrow">CLASS CALENDAR</span><h2>우리 반의 일정을 기록해요.</h2><p>일정 중 중요한 날은 D-DAY로 표시할 수 있어요.</p></div><div className="calendar-layout"><section className="panel calendar-panel"><div className="calendar-head"><button className="icon-button" onClick={()=>setMonth(new Date(year,mon-1,1))}><ChevronLeft/></button><h3>{year}년 {mon+1}월</h3><button className="icon-button" onClick={()=>setMonth(new Date(year,mon+1,1))}><ChevronRight/></button></div><div className="calendar-grid">{weekdays.map(d=><div className="weekday-label" key={d}>{d}</div>)}{Array.from({length:first},(_,i)=><div key={`blank-${i}`} className="calendar-cell blank"/>)}{Array.from({length:days},(_,i)=>{const n=i+1,ds=`${year}-${String(mon+1).padStart(2,'0')}-${String(n).padStart(2,'0')}`,ev=data.filter(e=>e.event_date===ds);return <button key={ds} className={`calendar-cell ${date===ds?'chosen':''} ${ds===todayISO()?'today':''}`} onClick={()=>setDate(ds)}><span>{n}</span>{ev.slice(0,2).map(e=><i key={e.id} className={e.is_dday?'event-dot important-dot':'event-dot'} title={e.title}/>)}</button>})}</div><div className="calendar-legend"><span><i className="event-dot"/> 일반 일정</span><span><i className="event-dot important-dot"/> D-DAY 일정</span></div></section><section className="panel selected-events"><span className="eyebrow">SELECTED DATE</span><h3>{dateLabel(date)}</h3>{busy?<div className="skeleton"/>:selected.length?selected.map(e=><div className="event-card" key={e.id}><div><b>{e.title}</b>{e.is_dday&&<span className="tag">D-DAY</span>}<p>{e.description}</p></div>{staff&&<button className="icon-button" onClick={()=>del(e.id)}><Trash2 size={16}/></button>}</div>):<Empty>이 날짜에 등록된 일정이 없어요.</Empty>}{staff&&<><hr/><SectionTitle title="일정 추가"/><form className="editor-form" onSubmit={add}><label>일정 이름<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 체육대회" required/></label><label>설명<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="일정에 대한 설명"/></label><label className="check-line"><input type="checkbox" checked={dday} onChange={e=>setDday(e.target.checked)}/> 이 일정을 D-DAY로 표시</label><button className="button">일정 등록</button>{message&&<p className="inline-message">{message}</p>}</form></>}</section></div></div>
+  const canManage = canManageCalendar(role)
+  const [month, setMonth] = useState(() => new Date())
+  const [date, setDate] = useState(todayISO())
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [dday, setDday] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const year = month.getFullYear()
+  const mon = month.getMonth()
+  const first = new Date(year, mon, 1).getDay()
+  const days = new Date(year, mon + 1, 0).getDate()
+
+  const { data, busy, setData } = useLoad(
+    `events-${year}-${mon}`,
+    () => supabase.from('events').select('*')
+      .gte('event_date', `${year}-${String(mon + 1).padStart(2, '0')}-01`)
+      .lte('event_date', `${year}-${String(mon + 1).padStart(2, '0')}-${String(days).padStart(2, '0')}`)
+      .order('event_date')
+  )
+
+  const selected = data.filter(e => e.event_date === date)
+
+  async function add(e) {
+    e.preventDefault()
+    if (!canManage) {
+      setMessage('일정 등록 권한이 없습니다.')
+      return
+    }
+    const { data: inserted, error } = await supabase.from('events').insert({
+      event_date: date,
+      title,
+      description,
+      is_dday: dday
+    }).select('*')
+
+    if (error) {
+      setMessage(`등록 실패: ${error.message}`)
+    } else {
+      setMessage('일정을 등록했어요.')
+      setTitle('')
+      setDescription('')
+      setDday(false)
+      if (inserted?.[0]) setData(prev => [...prev, inserted[0]])
+    }
+  }
+
+  async function del(id) {
+    if (!canManage) {
+      setMessage('일정 삭제 권한이 없습니다.')
+      return
+    }
+    if (!confirm('이 일정을 삭제할까요?')) return
+    const { error } = await supabase.from('events').delete().eq('id', id)
+    if (error) {
+      setMessage(`삭제 실패: ${error.message}`)
+    } else {
+      setMessage('일정을 삭제했어요.')
+      setData(prev => prev.filter(e => e.id !== id))
+    }
+  }
+
+  return <div className="stack-lg">
+    <div className="page-intro">
+      <span className="eyebrow">CLASS CALENDAR</span>
+      <h2>우리 반의 일정을 기록해요.</h2>
+      <p>일정 중 중요한 날은 D-DAY로 표시할 수 있어요.{canManage && ' (일정 편집 가능)'}</p>
+    </div>
+    <div className="calendar-layout">
+      <section className="panel calendar-panel">
+        <div className="calendar-head">
+          <button className="icon-button" onClick={() => setMonth(new Date(year, mon - 1, 1))}><ChevronLeft /></button>
+          <h3>{year}년 {mon + 1}월</h3>
+          <button className="icon-button" onClick={() => setMonth(new Date(year, mon + 1, 1))}><ChevronRight /></button>
+        </div>
+        <div className="calendar-grid">
+          {weekdays.map(d => <div className="weekday-label" key={d}>{d}</div>)}
+          {Array.from({ length: first }, (_, i) => <div key={`blank-${i}`} className="calendar-cell blank" />)}
+          {Array.from({ length: days }, (_, i) => {
+            const n = i + 1
+            const ds = `${year}-${String(mon + 1).padStart(2, '0')}-${String(n).padStart(2, '0')}`
+            const ev = data.filter(e => e.event_date === ds)
+            return <button
+              key={ds}
+              className={`calendar-cell ${date === ds ? 'chosen' : ''} ${ds === todayISO() ? 'today' : ''}`}
+              onClick={() => setDate(ds)}
+            >
+              <span>{n}</span>
+              <div className="cell-dots">
+                {ev.slice(0, 3).map(e => (
+                  <i key={e.id} className={e.is_dday ? 'event-dot important-dot' : 'event-dot'} title={e.title} />
+                ))}
+              </div>
+            </button>
+          })}
+        </div>
+        <div className="calendar-legend">
+          <span><i className="event-dot" /> 일반 일정</span>
+          <span><i className="event-dot important-dot" /> D-DAY 일정</span>
+        </div>
+      </section>
+
+      <section className="panel selected-events">
+        <span className="eyebrow">SELECTED DATE</span>
+        <h3>{dateLabel(date)}</h3>
+        {busy ? <div className="skeleton" /> : selected.length ? selected.map(e => (
+          <div className="event-card" key={e.id}>
+            <div>
+              <b>{e.title}</b>{e.is_dday && <span className="tag">D-DAY</span>}
+              <p>{e.description}</p>
+            </div>
+            {canManage && <button className="icon-button" onClick={() => del(e.id)} title="삭제"><Trash2 size={16} /></button>}
+          </div>
+        )) : <Empty>이 날짜에 등록된 일정이 없어요.</Empty>}
+
+        {canManage && <>
+          <hr />
+          <SectionTitle title="일정 추가" desc={role === 'schedule_only' ? "'일정만' 권한으로 새 일정을 등록해요." : '중요한 날은 D-DAY로 지정할 수 있어요.'} />
+          <form className="editor-form" onSubmit={add}>
+            <label>일정 이름<input value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 체육대회" required /></label>
+            <label>설명<textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="일정에 대한 설명" /></label>
+            <label className="check-line"><input type="checkbox" checked={dday} onChange={e => setDday(e.target.checked)} /> 이 일정을 D-DAY로 표시</label>
+            <button className="button">일정 등록</button>
+            {message && <p className="inline-message">{message}</p>}
+          </form>
+        </>}
+      </section>
+    </div>
+  </div>
 }
 
-function BoardPage({role,userId}) {
-  const staff=isStaff(role),[title,setTitle]=useState(''),[body,setBody]=useState(''),[important,setImportant]=useState(false),[message,setMessage]=useState('')
-  const {data,busy}=useLoad('board',()=>supabase.from('posts').select('*').order('is_important',{ascending:false}).order('created_at',{ascending:false}))
-  async function add(e){e.preventDefault();if(!staff){setMessage('게시물 등록은 선생님 또는 관리자만 할 수 있어요.');return}const {error}=await supabase.from('posts').insert({title,body,is_important:important,author_id:userId});setMessage(error?.message||'게시물을 등록했어요.');if(!error)location.reload()}
-  async function del(id){if(!staff){setMessage('게시물 삭제 권한이 없어요.');return}if(!confirm('게시물을 삭제할까요?'))return;const {data:deleted,error}=await supabase.from('posts').delete().eq('id',id).select('id');if(error){setMessage(`삭제 실패: ${error.message}`);return}if(!deleted?.length){setMessage('삭제된 게시물이 없어요. Supabase SQL 권한 정책을 확인해 주세요.');return}setMessage('게시물을 삭제했어요.');location.reload()}
-  return <div className="stack-lg"><div className="page-intro"><span className="eyebrow">CLASS COMMUNITY</span><h2>우리 반 소식을 확인해요.</h2><p>게시물 등록은 선생님과 관리자만 할 수 있어요.</p></div><section className="panel"><SectionTitle title="게시판" desc="중요 공지는 상단에 고정돼요."/><div className="post-list">{busy?<div className="skeleton"/>:data.length?data.map(p=><article className={`post-card ${p.is_important?'pinned':''}`} key={p.id}><div className="post-meta">{p.is_important&&<span className="tag"><Pin size={12}/> 중요 공지</span>}<span>{new Date(p.created_at).toLocaleDateString('ko-KR')}</span></div><h3>{p.title}</h3><p>{p.body}</p>{staff&&<button className="text-button danger-text" onClick={()=>del(p.id)}>게시물 삭제</button>}</article>):<Empty>아직 게시물이 없어요.</Empty>}</div>{staff&&<><hr/><SectionTitle title="새 게시물 작성"/><form className="editor-form" onSubmit={add}><label>제목<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목을 입력하세요" required/></label><label>내용<textarea rows="5" value={body} onChange={e=>setBody(e.target.value)} placeholder="내용을 입력하세요" required/></label><label className="check-line"><input type="checkbox" checked={important} onChange={e=>setImportant(e.target.checked)}/> 중요 공지로 등록 (상단 고정)</label><button className="button">게시물 등록</button>{message&&<p className="inline-message">{message}</p>}</form></>}{!staff&&<p className="permission-note">게시물은 열람만 가능합니다.</p>}</section></div>
+function BoardPage({ role, userId }) {
+  const staff = isStaff(role)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [important, setImportant] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  // 수정 모달 상태
+  const [editingPost, setEditingPost] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [editImportant, setEditImportant] = useState(false)
+  const [existingImages, setExistingImages] = useState([])
+  const [newEditFiles, setNewEditFiles] = useState([])
+  const [editBusy, setEditBusy] = useState(false)
+  const [editMessage, setEditMessage] = useState('')
+
+  // 이미지 크게 보기(라이트박스)
+  const [lightboxUrl, setLightboxUrl] = useState(null)
+
+  const newFileInputRef = useRef(null)
+  const editFileInputRef = useRef(null)
+
+  const { data, busy: listBusy, setData } = useLoad(
+    'board',
+    () => supabase.from('posts').select('*').order('is_important', { ascending: false }).order('created_at', { ascending: false })
+  )
+
+  // 새 글 파일 선택 핸들러 (모바일/PC 지원)
+  function handleNewFileSelect(e) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    const validImages = files.filter(f => f.type.startsWith('image/'))
+    if (validImages.length < files.length) {
+      setMessage('이미지 파일만 선택할 수 있어요.')
+    }
+    setSelectedFiles(prev => [...prev, ...validImages].slice(0, 10))
+    e.target.value = ''
+  }
+
+  function removeNewFile(index) {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 수정 모드 파일 선택 핸들러
+  function handleEditFileSelect(e) {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    const validImages = files.filter(f => f.type.startsWith('image/'))
+    if (validImages.length < files.length) {
+      setEditMessage('이미지 파일만 선택할 수 있어요.')
+    }
+    setNewEditFiles(prev => [...prev, ...validImages].slice(0, 10 - existingImages.length))
+    e.target.value = ''
+  }
+
+  function removeExistingImage(path) {
+    setExistingImages(prev => prev.filter(p => p !== path))
+  }
+
+  function removeNewEditFile(index) {
+    setNewEditFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // 이미지 업로드 헬퍼
+  async function uploadImages(files) {
+    const uploaded = []
+    for (const f of files) {
+      const ext = f.name?.split('.').pop() || (f.type ? f.type.split('/')[1]?.replace('jpeg', 'jpg') : 'jpg') || 'jpg'
+      const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+      const path = `${userId}/${crypto.randomUUID()}.${safeExt}`
+      const { error: upErr } = await supabase.storage.from('post-images').upload(path, f, {
+        upsert: false,
+        contentType: f.type || 'image/jpeg'
+      })
+      if (upErr) throw upErr
+      uploaded.push(path)
+    }
+    return uploaded
+  }
+
+  // 새 게시물 등록
+  async function add(e) {
+    e.preventDefault()
+    if (!staff) {
+      setMessage('게시물 등록은 선생님 또는 관리자만 할 수 있어요.')
+      return
+    }
+    setBusy(true)
+    setMessage('게시물을 등록하고 있어요...')
+    try {
+      let uploadedPaths = []
+      if (selectedFiles.length > 0) {
+        uploadedPaths = await uploadImages(selectedFiles)
+      }
+      const { data: inserted, error } = await supabase.from('posts').insert({
+        title,
+        body,
+        is_important: important,
+        author_id: userId,
+        image_paths: uploadedPaths
+      }).select('*')
+
+      if (error) throw error
+      setTitle('')
+      setBody('')
+      setImportant(false)
+      setSelectedFiles([])
+      setMessage('게시물을 성공적으로 등록했어요.')
+      if (inserted?.[0]) setData(prev => [inserted[0], ...prev])
+    } catch (err) {
+      setMessage(`등록 실패: ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 수정 시작
+  function startEdit(post) {
+    setEditingPost(post)
+    setEditTitle(post.title || '')
+    setEditBody(post.body || '')
+    setEditImportant(Boolean(post.is_important))
+    setExistingImages(post.image_paths || [])
+    setNewEditFiles([])
+    setEditMessage('')
+  }
+
+  // 수정 저장
+  async function saveEdit(e) {
+    e.preventDefault()
+    if (!editingPost) return
+    setEditBusy(true)
+    setEditMessage('게시물을 수정하고 있어요...')
+    try {
+      let newUploaded = []
+      if (newEditFiles.length > 0) {
+        newUploaded = await uploadImages(newEditFiles)
+      }
+      const finalImagePaths = [...existingImages, ...newUploaded]
+      const { data: updated, error } = await supabase.from('posts').update({
+        title: editTitle.trim(),
+        body: editBody.trim(),
+        is_important: editImportant,
+        image_paths: finalImagePaths,
+        updated_at: new Date().toISOString()
+      }).eq('id', editingPost.id).select('*')
+
+      if (error) throw error
+
+      if (updated?.[0]) {
+        setData(prev => prev.map(p => p.id === editingPost.id ? updated[0] : p))
+      }
+      setEditingPost(null)
+      setMessage('게시물을 성공적으로 수정했어요.')
+    } catch (err) {
+      setEditMessage(`수정 실패: ${err.message}`)
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  // 게시물 삭제
+  async function del(post) {
+    if (!staff) {
+      setMessage('게시물 삭제 권한이 없어요.')
+      return
+    }
+    if (!confirm('게시물을 삭제할까요? 첨부된 사진도 함께 삭제됩니다.')) return
+    try {
+      const { error } = await supabase.from('posts').delete().eq('id', post.id)
+      if (error) throw error
+
+      if (post.image_paths?.length) {
+        await supabase.storage.from('post-images').remove(post.image_paths)
+      }
+      setData(prev => prev.filter(p => p.id !== post.id))
+      setMessage('게시물을 삭제했어요.')
+    } catch (err) {
+      setMessage(`삭제 실패: ${err.message}`)
+    }
+  }
+
+  const getPostImageUrl = (path) => supabase.storage.from('post-images').getPublicUrl(path).data.publicUrl
+
+  return <div className="stack-lg">
+    <div className="page-intro">
+      <span className="eyebrow">CLASS COMMUNITY</span>
+      <h2>우리 반 소식을 확인해요.</h2>
+      <p>게시물 등록 및 수정은 선생님과 관리자가 할 수 있어요.</p>
+    </div>
+
+    <section className="panel">
+      <SectionTitle title="게시판" desc="중요 공지는 상단에 고정돼요. 사진을 누르면 크게 볼 수 있어요." />
+      
+      <div className="post-list">
+        {listBusy ? <div className="skeleton" /> : data.length ? data.map(p => (
+          <article className={`post-card ${p.is_important ? 'pinned' : ''}`} key={p.id}>
+            <div className="post-meta">
+              {p.is_important && <span className="tag"><Pin size={12} /> 중요 공지</span>}
+              <span>{new Date(p.created_at).toLocaleDateString('ko-KR')}</span>
+              {p.updated_at && p.updated_at !== p.created_at && (
+                <small className="post-edited-tag">(수정됨)</small>
+              )}
+            </div>
+            <h3>{p.title}</h3>
+            <p className="post-body-text">{p.body}</p>
+
+            {/* 첨부 이미지 그리드 */}
+            {p.image_paths && p.image_paths.length > 0 && (
+              <div className={`post-images-grid count-${Math.min(p.image_paths.length, 4)}`}>
+                {p.image_paths.map((imgPath, idx) => {
+                  const url = getPostImageUrl(imgPath)
+                  return (
+                    <div
+                      key={`${imgPath}-${idx}`}
+                      className="post-image-item"
+                      onClick={() => setLightboxUrl(url)}
+                      title="클릭하여 크게 보기"
+                    >
+                      <img src={url} alt={`게시글 첨부 사진 ${idx + 1}`} loading="lazy" />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {staff && (
+              <div className="post-actions">
+                <button type="button" className="text-button" onClick={() => startEdit(p)}>
+                  <Edit3 size={14} /> 수정
+                </button>
+                <button type="button" className="text-button danger-text" onClick={() => del(p)}>
+                  <Trash2 size={14} /> 삭제
+                </button>
+              </div>
+            )}
+          </article>
+        )) : <Empty>아직 게시물이 없어요.</Empty>}
+      </div>
+
+      {staff && <>
+        <hr />
+        <SectionTitle title="새 게시물 작성" desc="사진을 첨부하고 중요 공지로 상단에 고정할 수 있어요." />
+        <form className="editor-form" onSubmit={add}>
+          <label>제목<input value={title} onChange={e => setTitle(e.target.value)} placeholder="제목을 입력하세요" required /></label>
+          <label>내용<textarea rows="5" value={body} onChange={e => setBody(e.target.value)} placeholder="내용을 입력하세요" required /></label>
+          
+          {/* 이미지 첨부 영역 */}
+          <div>
+            <span className="input-label-text">사진 첨부 (모바일/PC 지원)</span>
+            <input
+              ref={newFileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleNewFileSelect}
+            />
+            <button
+              type="button"
+              className="upload-box-button"
+              onClick={() => newFileInputRef.current?.click()}
+            >
+              <ImagePlus size={18} />
+              <div className="upload-box-text">
+                <b>사진 선택 또는 카메라 촬영</b>
+                <small>{selectedFiles.length > 0 ? `${selectedFiles.length}장의 사진이 선택됨` : 'PNG, JPG, WebP, GIF 지원 (최대 10장)'}</small>
+              </div>
+            </button>
+
+            {/* 선택된 파일 썸네일 미리보기 */}
+            {selectedFiles.length > 0 && (
+              <div className="selected-files-preview">
+                {selectedFiles.map((file, idx) => (
+                  <div key={idx} className="preview-thumb">
+                    <img src={URL.createObjectURL(file)} alt="미리보기" />
+                    <button
+                      type="button"
+                      className="preview-remove-btn"
+                      onClick={() => removeNewFile(idx)}
+                      title="삭제"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <label className="check-line">
+            <input type="checkbox" checked={important} onChange={e => setImportant(e.target.checked)} />
+            중요 공지로 등록 (상단 고정)
+          </label>
+          
+          <button className="button" disabled={busy}>
+            {busy ? '등록 중...' : '게시물 등록'}
+          </button>
+          {message && <p className="inline-message">{message}</p>}
+        </form>
+      </>}
+      {!staff && <p className="permission-note">게시물은 열람만 가능합니다.</p>}
+    </section>
+
+    {/* 게시물 수정 다이얼로그 모달 */}
+    {editingPost && (
+      <div className="crop-backdrop" role="dialog" aria-modal="true" aria-label="게시물 수정">
+        <section className="crop-dialog edit-post-dialog">
+          <div className="modal-header">
+            <h2>게시물 수정</h2>
+            <button type="button" className="icon-button" onClick={() => setEditingPost(null)}><X size={18}/></button>
+          </div>
+          <p>내용과 첨부 사진을 수정하고 저장하세요.</p>
+          
+          <form className="editor-form" onSubmit={saveEdit}>
+            <label>제목<input value={editTitle} onChange={e => setEditTitle(e.target.value)} required /></label>
+            <label>내용<textarea rows="5" value={editBody} onChange={e => setEditBody(e.target.value)} required /></label>
+
+            {/* 기존 첨부 이미지 관리 */}
+            {existingImages.length > 0 && (
+              <div>
+                <span className="input-label-text">현재 첨부된 사진 ({existingImages.length}장)</span>
+                <div className="selected-files-preview">
+                  {existingImages.map((p, idx) => (
+                    <div key={p} className="preview-thumb">
+                      <img src={getPostImageUrl(p)} alt="현재 이미지" />
+                      <button
+                        type="button"
+                        className="preview-remove-btn"
+                        onClick={() => removeExistingImage(p)}
+                        title="이 사진 삭제"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 새 사진 추가 */}
+            <div>
+              <span className="input-label-text">사진 추가하기</span>
+              <input
+                ref={editFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleEditFileSelect}
+              />
+              <button
+                type="button"
+                className="upload-box-button"
+                onClick={() => editFileInputRef.current?.click()}
+              >
+                <ImagePlus size={18} />
+                <div className="upload-box-text">
+                  <b>추가할 사진 선택</b>
+                  <small>{newEditFiles.length > 0 ? `${newEditFiles.length}장 추가 선택됨` : '새 사진을 추가로 올릴 수 있어요'}</small>
+                </div>
+              </button>
+
+              {newEditFiles.length > 0 && (
+                <div className="selected-files-preview">
+                  {newEditFiles.map((file, idx) => (
+                    <div key={idx} className="preview-thumb">
+                      <img src={URL.createObjectURL(file)} alt="새 이미지 미리보기" />
+                      <button
+                        type="button"
+                        className="preview-remove-btn"
+                        onClick={() => removeNewEditFile(idx)}
+                        title="취소"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label className="check-line">
+              <input type="checkbox" checked={editImportant} onChange={e => setEditImportant(e.target.checked)} />
+              중요 공지로 등록 (상단 고정)
+            </label>
+
+            {editMessage && <p className="inline-message">{editMessage}</p>}
+
+            <div className="button-row crop-actions">
+              <button type="button" className="danger-button" onClick={() => setEditingPost(null)} disabled={editBusy}>취소</button>
+              <button className="button" disabled={editBusy}>{editBusy ? '수정 저장 중...' : '수정 완료'}</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    )}
+
+    {/* 이미지 확대 보기(라이트박스 모달) */}
+    {lightboxUrl && (
+      <div className="lightbox-backdrop" onClick={() => setLightboxUrl(null)}>
+        <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+          <button className="lightbox-close-btn" onClick={() => setLightboxUrl(null)} aria-label="닫기">
+            <X size={24} />
+          </button>
+          <img src={lightboxUrl} alt="확대 보기" />
+        </div>
+      </div>
+    )}
+  </div>
 }
 
-function UsersPage({currentUser,role}) {
-  const [data,setData]=useState([]),[busy,setBusy]=useState(true),[message,setMessage]=useState(''),[working,setWorking]=useState('')
-  async function load(){setBusy(true);try{const {data:{session}}=await supabase.auth.getSession();if(!session)throw new Error('로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.');const res=await fetch('/api/list-users',{headers:{Authorization:`Bearer ${session.access_token}`}});const body=await res.text();let json;try{json=JSON.parse(body)}catch{throw new Error('계정 목록 API가 JSON 대신 자바스크립트 파일을 반환했어요. 서버를 재시작해 npm run dev로 실행해 주세요.')}if(!res.ok)throw new Error(json.error||'계정 목록을 불러오지 못했어요.');setData(json.users||[])}catch(e){setMessage(e.message==='Failed to fetch'?'계정 API에 연결하지 못했습니다. npm run dev 서버가 실행 중인지 확인해 주세요.':e.message)}finally{setBusy(false)}}
-  useEffect(()=>{load()},[])
-  async function changeRole(id,newRole){if(role!=='admin')return;if(id===currentUser&&newRole!=='admin'){setMessage('현재 로그인한 관리자 본인의 권한은 변경할 수 없어요.');return}setWorking(id);try{const {error}=await supabase.rpc('admin_set_user_role',{target_user_id:id,new_role:newRole});if(error)throw error;setMessage('권한을 변경했어요.');await load()}catch(e){setMessage(e.message)}finally{setWorking('')}}
-  async function editUserName(user){const next=prompt('새 이름을 입력하세요.',user.display_name||'');if(next===null||!next.trim())return;setWorking(user.id);try{const {error}=await supabase.from('profiles').update({display_name:next.trim()}).eq('id',user.id);if(error)throw error;setMessage('이름을 변경했어요.');await load()}catch(e){setMessage(`이름 변경 실패: ${e.message}`)}finally{setWorking('')}}
-  async function editUserPhoto(user,file){if(!file)return;setWorking(user.id);try{if(!file.type.startsWith('image/')||file.size>5*1024*1024)throw new Error('5MB 이하 이미지 파일을 선택해 주세요.');const path=`${user.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;const {error:upError}=await supabase.storage.from('profile-avatars').upload(path,file);if(upError)throw upError;const {error}=await supabase.from('profiles').update({avatar_path:path}).eq('id',user.id);if(error)throw error;setMessage('프로필 사진을 변경했어요.');await load()}catch(e){setMessage(`사진 변경 실패: ${e.message}`)}finally{setWorking('')}}
-  async function removeUser(user){if(user.id===currentUser||user.role==='admin'){setMessage('본인 또는 관리자 계정은 삭제할 수 없어요.');return}if(role==='teacher'&&user.role!=='student'){setMessage('선생님은 학생 계정만 삭제할 수 있어요.');return}if(!confirm(`${user.display_name||user.email} 계정을 삭제할까요? 이 계정이 작성한 게시물도 함께 삭제됩니다.`))return
-    setWorking(user.id);try{const {data:{session}}=await supabase.auth.getSession();const res=await fetch('/api/delete-user',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({userId:user.id})});const json=await res.json();if(!res.ok)throw new Error(json.error||'계정 삭제에 실패했어요.');setMessage('계정과 해당 계정의 게시물을 삭제했어요.');await load()}catch(e){setMessage(e.message)}finally{setWorking('')}}
-  return <div className="stack-lg"><div className="page-intro"><span className="eyebrow">ACCOUNT MANAGEMENT</span><h2>우리 반 계정 관리</h2><p>{role==='admin'?'학생과 선생님 계정을 관리할 수 있어요.':'학생 계정만 관리할 수 있어요.'}</p></div><section className="panel"><SectionTitle title="가입한 계정" desc="계정 삭제는 복구할 수 없으며 작성한 게시물도 함께 삭제됩니다."/><div className="user-list">{busy?<div className="skeleton"/>:data.length?data.map(u=><div className="user-row" key={u.id}><Avatar profile={u} fallback={u.email}/><div className="user-info"><b>{u.display_name||'이름 미설정'} <small className="inline-role">{roleLabel[u.role]}</small></b><small>{u.email}</small></div><button className="text-button" disabled={working===u.id} onClick={()=>editUserName(u)}>이름 변경</button><label className="text-button photo-change">사진<input type="file" accept="image/png,image/jpeg,image/webp" disabled={working===u.id} onChange={e=>{editUserPhoto(u,e.target.files?.[0]);e.target.value=''}}/></label>{role==='admin'&&u.id!==currentUser&&u.role!=='admin'&&<select value={u.role} disabled={working===u.id} onChange={e=>changeRole(u.id,e.target.value)}><option value="student">학생</option><option value="teacher">선생님</option></select>}{u.id!==currentUser&&u.role!=='admin'&&(role==='admin'||u.role==='student')&&<button className="danger-button" disabled={working===u.id} onClick={()=>removeUser(u)}>{working===u.id?'처리 중':'계정 삭제'}</button>}</div>):<Empty>관리할 계정이 없어요.</Empty>}</div>{message&&<p className="inline-message">{message}</p>}<button className="text-button" onClick={load}>목록 새로고침</button></section></div>
-}
+function UsersPage({ currentUser, role }) {
+  const [data, setData] = useState([])
+  const [busy, setBusy] = useState(true)
+  const [message, setMessage] = useState('')
+  const [working, setWorking] = useState('')
+  const photoInputs = useRef({})
 
+  async function load() {
+    setBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('로그인 정보를 확인할 수 없습니다. 다시 로그인해 주세요.')
+      const res = await fetch('/api/list-users', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      const body = await res.text()
+      let json
+      try { json = JSON.parse(body) } catch { throw new Error('계정 목록 API가 JSON 대신 올바르지 않은 응답을 반환했습니다.') }
+      if (!res.ok) throw new Error(json.error || '계정 목록을 불러오지 못했어요.')
+      setData(json.users || [])
+    } catch (e) {
+      setMessage(e.message === 'Failed to fetch' ? '계정 API에 연결하지 못했습니다. 개발 서버가 실행 중인지 확인해 주세요.' : e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function changeRole(id, newRole) {
+    if (role !== 'admin') return
+    if (id === currentUser && newRole !== 'admin') {
+      setMessage('현재 로그인한 관리자 본인의 권한은 변경할 수 없어요.')
+      return
+    }
+    setWorking(id)
+    try {
+      const { error } = await supabase.rpc('admin_set_user_role', { target_user_id: id, new_role: newRole })
+      if (error) throw error
+      setMessage('권한을 변경했어요.')
+      await load()
+    } catch (e) {
+      setMessage(e.message)
+    } finally {
+      setWorking('')
+    }
+  }
+
+  async function editUserName(user) {
+    const next = prompt('새 이름을 입력하세요.', user.display_name || '')
+    if (next === null || !next.trim()) return
+    setWorking(user.id)
+    try {
+      const { error } = await supabase.from('profiles').update({ display_name: next.trim() }).eq('id', user.id)
+      if (error) throw error
+      setMessage('이름을 변경했어요.')
+      await load()
+    } catch (e) {
+      setMessage(`이름 변경 실패: ${e.message}`)
+    } finally {
+      setWorking('')
+    }
+  }
+
+  async function editUserPhoto(user, file) {
+    if (!file) return
+    setWorking(user.id)
+    try {
+      if (!file.type.startsWith('image/')) throw new Error('이미지 파일을 선택해 주세요.')
+      const ext = file.type?.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
+      const safeExt = ext.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+      const path = `${user.id}/${crypto.randomUUID()}.${safeExt}`
+      const { error: upError } = await supabase.storage.from('profile-avatars').upload(path, file, {
+        upsert: true,
+        contentType: file.type || 'image/jpeg'
+      })
+      if (upError) throw upError
+      const { error } = await supabase.from('profiles').update({ avatar_path: path }).eq('id', user.id)
+      if (error) throw error
+      setMessage('프로필 사진을 변경했어요.')
+      await load()
+    } catch (e) {
+      setMessage(`사진 변경 실패: ${e.message}`)
+    } finally {
+      setWorking('')
+    }
+  }
+
+  async function removeUser(user) {
+    if (user.id === currentUser || user.role === 'admin') {
+      setMessage('본인 또는 관리자 계정은 삭제할 수 없어요.')
+      return
+    }
+    if (role === 'teacher' && !['student', 'schedule_only'].includes(user.role)) {
+      setMessage('선생님은 학생 또는 일정만 계정만 삭제할 수 있어요.')
+      return
+    }
+    if (!confirm(`${user.display_name || user.email} 계정을 삭제할까요? 이 계정이 작성한 게시물도 함께 삭제됩니다.`)) return
+    setWorking(user.id)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ userId: user.id })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || '계정 삭제에 실패했어요.')
+      setMessage('계정과 해당 계정의 게시물을 삭제했어요.')
+      await load()
+    } catch (e) {
+      setMessage(e.message)
+    } finally {
+      setWorking('')
+    }
+  }
+
+  return <div className="stack-lg">
+    <div className="page-intro">
+      <span className="eyebrow">ACCOUNT MANAGEMENT</span>
+      <h2>우리 반 계정 관리</h2>
+      <p>{role === 'admin' ? '학생, 일정만, 선생님 계정을 관리할 수 있어요.' : '학생 및 일정만 계정을 관리할 수 있어요.'}</p>
+    </div>
+    <section className="panel">
+      <SectionTitle title="가입한 계정" desc="계정 삭제는 복구할 수 없으며 작성한 게시물도 함께 삭제됩니다." />
+      <div className="user-list">
+        {busy ? <div className="skeleton" /> : data.length ? data.map(u => (
+          <div className="user-row" key={u.id}>
+            <div className="user-profile-header">
+              <Avatar profile={u} fallback={u.email} />
+              <div className="user-info">
+                <b>{u.display_name || '이름 미설정'} <small className="inline-role">{roleLabel[u.role] || u.role}</small></b>
+                <small>{u.email}</small>
+              </div>
+            </div>
+
+            <div className="user-actions-group">
+              <button className="text-button" disabled={working === u.id} onClick={() => editUserName(u)}>
+                이름 변경
+              </button>
+              
+              {/* 모바일 호환 사진 변경 버튼 */}
+              <input
+                ref={el => photoInputs.current[u.id] = el}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                disabled={working === u.id}
+                onChange={e => {
+                  editUserPhoto(u, e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+              <button
+                type="button"
+                className="text-button"
+                disabled={working === u.id}
+                onClick={() => photoInputs.current[u.id]?.click()}
+              >
+                사진 변경
+              </button>
+
+              {role === 'admin' && u.id !== currentUser && u.role !== 'admin' && (
+                <select
+                  className="role-select"
+                  value={u.role}
+                  disabled={working === u.id}
+                  onChange={e => changeRole(u.id, e.target.value)}
+                >
+                  <option value="student">학생</option>
+                  <option value="schedule_only">일정만</option>
+                  <option value="teacher">선생님</option>
+                </select>
+              )}
+
+              {u.id !== currentUser && u.role !== 'admin' && (role === 'admin' || ['student', 'schedule_only'].includes(u.role)) && (
+                <button className="danger-button" disabled={working === u.id} onClick={() => removeUser(u)}>
+                  {working === u.id ? '처리 중' : '계정 삭제'}
+                </button>
+              )}
+            </div>
+          </div>
+        )) : <Empty>관리할 계정이 없어요.</Empty>}
+      </div>
+      {message && <p className="inline-message">{message}</p>}
+      <button className="text-button" onClick={load}>목록 새로고침</button>
+    </section>
+  </div>
+}
